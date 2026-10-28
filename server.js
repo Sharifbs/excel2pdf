@@ -7,7 +7,7 @@ const path = require('path');
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Excel to PDF Endpoint
+// Excel to PDF (Question Paper Format) Endpoint
 app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -16,43 +16,63 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
 
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
-    const sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
+    const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="excel-converted.pdf"');
+    res.setHeader('Content-Disposition', 'attachment; filename="question-paper.pdf"');
 
     const doc = new PDFDocument({ margin: 40, size: 'A4' });
     doc.pipe(res);
 
-    // 1. Register Bangla Font (kalpurush.ttf matching exact folder file name)
+    // 1. Register Bangla Font
     const fontPath = path.join(__dirname, 'fonts', 'kalpurush.ttf');
     doc.registerFont('BanglaFont', fontPath);
 
-    // 2. Title with Bangla Support
-    doc.font('BanglaFont').fontSize(18).fillColor('#1e293b').text('Excel Data Conversion', { align: 'center' });
-    doc.moveDown(1.5);
+    // 2. Question Paper Header
+    doc.font('BanglaFont').fontSize(18).fillColor('#0f172a').text('ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান', { align: 'center' });
+    doc.moveDown(0.3);
+    doc.fontSize(10).fillColor('#64748b').text('উৎসব / বিষয়: C-Unit Admission Test', { align: 'center' });
+    doc.moveDown(0.5);
+    
+    // Header underline divider
+    doc.strokeColor('#cbd5e1').lineWidth(1).moveTo(40, doc.y).lineTo(555, doc.y).stroke();
+    doc.moveDown(1);
 
-    // 3. Render Excel Rows
-    sheetData.forEach((row, index) => {
-      const cleanRow = row.map(cell => (cell !== undefined && cell !== null) ? cell : '');
-      const rowText = cleanRow.join('   |   ');
-      
-      if (rowText.trim().length > 0) {
-        if (index === 0) {
-          doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(rowText);
-          doc.moveDown(0.3);
-          doc.strokeColor('#cbd5e1').lineWidth(1).moveTo(40, doc.y).lineTo(555, doc.y).stroke();
-          doc.moveDown(0.5);
-        } else {
-          doc.font('BanglaFont').fontSize(10).fillColor('#334155').text(rowText);
-          doc.moveDown(0.4);
+    // 3. Render Questions in Exam Paper Format
+    rawData.forEach((q, index) => {
+      // Extract data safely
+      const qText = q.question_text || q.Question || q.question || '';
+      const optA = q.option_a || q['Option A'] || q.a || '';
+      const optB = q.option_b || q['Option B'] || q.b || '';
+      const optC = q.option_c || q['Option C'] || q.c || '';
+      const optD = q.option_d || q['Option D'] || q.d || '';
+      const correct = q.correct_option || q.Answer || q.correct || '';
+      const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
+
+      if (qText) {
+        // Question Text
+        doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(`প্রশ্ন ${index + 1}. ${qText}`, { lineGap: 3 });
+        
+        // Options Format (A, B, C, D)
+        const optionsText = `(A) ${optA}      (B) ${optB}      (C) ${optC}      (D) ${optD}`;
+        doc.font('BanglaFont').fontSize(10).fillColor('#334155').text(optionsText, { indent: 15, lineGap: 3 });
+        
+        // Correct Answer & Explanation
+        if (correct || explanation) {
+          let ansText = '';
+          if (correct) ansText += `সঠিক উত্তর: ${correct}`;
+          if (explanation) ansText += (correct ? '   |   ' : '') + `ব্যাখ্যা: ${explanation}`;
+          
+          doc.font('BanglaFont').fontSize(9).fillColor('#047857').text(ansText, { indent: 15, lineGap: 3 });
         }
+
+        doc.moveDown(0.8);
       }
     });
 
     doc.end();
   } catch (error) {
-    res.status(500).send('Error processing Excel file: ' + error.message);
+    res.status(500).send('Error generating question paper PDF: ' + error.message);
   }
 });
 
@@ -84,7 +104,7 @@ app.post('/api/convert-word', upload.single('file'), (req, res) => {
   }
 });
 
-// Main Dashboard Interface
+// UI Dashboard
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -92,115 +112,42 @@ app.get('/', (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>DocTransform Studio</title>
+      <title>DocTransform Studio - Question Paper Generator</title>
       <script src="https://cdn.tailwindcss.com"></script>
     </head>
     <body class="bg-slate-100 text-slate-800 min-h-screen font-sans">
-
       <header class="bg-white border-b border-slate-200 py-4 px-8 flex justify-between items-center shadow-sm">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-md">
-            📄
-          </div>
+          <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-md">📝</div>
           <div>
             <h1 class="text-xl font-bold text-slate-800 leading-tight">DocTransform Studio</h1>
-            <p class="text-xs text-slate-500">Bangla & English Supported PDF Converter</p>
+            <p class="text-xs text-slate-500">Excel MCQ to PDF Question Paper Converter</p>
           </div>
-        </div>
-        <div class="bg-emerald-50 text-emerald-600 border border-emerald-200 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full bg-emerald-500"></span> 100% Bangla Support Enabled
         </div>
       </header>
 
-      <main class="max-w-5xl mx-auto py-10 px-4">
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          
-          <button id="excelTab" onclick="switchMode('excel')" class="bg-white p-6 rounded-2xl border-2 border-indigo-600 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-4 cursor-pointer">
-            <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-2xl font-bold shrink-0">
-              📊
-            </div>
-            <div>
-              <h3 class="font-bold text-slate-800 text-lg">EXCEL TO PDF</h3>
-              <p class="text-slate-500 text-xs mt-1">Bangla & English .xlsx to PDF conversion</p>
-            </div>
-          </button>
-
-          <button id="wordTab" onclick="switchMode('word')" class="bg-white p-6 rounded-2xl border border-slate-200 opacity-60 hover:opacity-100 transition-all text-left flex items-start gap-4 cursor-pointer">
-            <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center text-2xl font-bold shrink-0">
-              📝
-            </div>
-            <div>
-              <h3 class="font-bold text-slate-800 text-lg">WORD TO PDF</h3>
-              <p class="text-slate-500 text-xs mt-1">Convert text documents into PDF</p>
-            </div>
-          </button>
-
-        </div>
-
+      <main class="max-w-4xl mx-auto py-10 px-4">
         <div class="bg-white rounded-3xl border border-slate-200 p-10 shadow-sm text-center">
-          
           <form id="convertForm" action="/api/convert-excel" method="post" enctype="multipart/form-data">
-            
             <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50/50 hover:bg-indigo-50/30 rounded-2xl p-12 transition-all cursor-pointer flex flex-col items-center justify-center mb-6" onclick="document.getElementById('fileInput').click()">
-              
-              <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-4 text-3xl">
-                ☁️
-              </div>
-              
-              <h3 id="dragText" class="text-lg font-bold text-slate-700 mb-1">Excel ফাইল ড্রাগ করুন অথবা সিলেক্ট করুন</h3>
-              <p id="subText" class="text-slate-400 text-xs mb-6">আপনার .xlsx ফাইল সিলেক্ট করে দ্রুত PDF বানিয়ে নিন</p>
-              
-              <span class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-6 py-3 rounded-xl shadow-sm transition-all inline-block">
-                ফাইল সিলেক্ট করুন
-              </span>
-
+              <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-4 text-3xl">📥</div>
+              <h3 class="text-lg font-bold text-slate-700 mb-1">Excel প্রশ্ন ফাইল আপলোড করুন</h3>
+              <p class="text-slate-400 text-xs mb-6">DU Admission Excel ফাইল সিলেক্ট করে সুন্দর Question Paper PDF ডাউনলোড করুন</p>
+              <span class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-6 py-3 rounded-xl shadow-sm transition-all inline-block">ফাইল সিলেক্ট করুন</span>
               <input type="file" name="file" accept=".xlsx, .xls" class="hidden" required id="fileInput" onchange="handleFileChange(this)" />
             </div>
 
             <div id="fileInfo" class="hidden mb-6 p-4 bg-slate-100 rounded-xl flex items-center justify-between">
               <span id="selectedFileName" class="text-sm font-medium text-slate-700"></span>
-              <button type="submit" id="submitBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-2 rounded-lg text-sm shadow-sm transition-all">
-                Convert to PDF Now
+              <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-2 rounded-lg text-sm shadow-sm transition-all">
+                Download Question Paper PDF
               </button>
             </div>
-
           </form>
-
         </div>
-
       </main>
 
       <script>
-        function switchMode(mode) {
-          const form = document.getElementById('convertForm');
-          const fileInput = document.getElementById('fileInput');
-          const excelTab = document.getElementById('excelTab');
-          const wordTab = document.getElementById('wordTab');
-          const dragText = document.getElementById('dragText');
-          const subText = document.getElementById('subText');
-          const fileInfo = document.getElementById('fileInfo');
-          
-          fileInput.value = '';
-          fileInfo.classList.add('hidden');
-
-          if (mode === 'excel') {
-            form.action = '/api/convert-excel';
-            fileInput.accept = '.xlsx, .xls';
-            excelTab.className = 'bg-white p-6 rounded-2xl border-2 border-indigo-600 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-4 cursor-pointer';
-            wordTab.className = 'bg-white p-6 rounded-2xl border border-slate-200 opacity-60 hover:opacity-100 transition-all text-left flex items-start gap-4 cursor-pointer';
-            dragText.textContent = 'Excel ফাইল ড্রাগ করুন অথবা সিলেক্ট করুন';
-            subText.textContent = 'আপনার .xlsx ফাইল সিলেক্ট করে দ্রুত PDF বানিয়ে নিন';
-          } else {
-            form.action = '/api/convert-word';
-            fileInput.accept = '.docx, .doc, .txt';
-            wordTab.className = 'bg-white p-6 rounded-2xl border-2 border-indigo-600 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-4 cursor-pointer';
-            excelTab.className = 'bg-white p-6 rounded-2xl border border-slate-200 opacity-60 hover:opacity-100 transition-all text-left flex items-start gap-4 cursor-pointer';
-            dragText.textContent = 'Word ফাইল ড্রাগ করুন অথবা সিলেক্ট করুন';
-            subText.textContent = 'আপনার Word document সিলেক্ট করে দ্রুত PDF বানিয়ে নিন';
-          }
-        }
-
         function handleFileChange(input) {
           if (input.files && input.files[0]) {
             document.getElementById('selectedFileName').textContent = input.files[0].name;
@@ -208,7 +155,6 @@ app.get('/', (req, res) => {
           }
         }
       </script>
-
     </body>
     </html>
   `);
