@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const XLSX = require('xlsx');
 const PDFDocument = require('pdfkit');
+const path = require('path');
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -23,19 +24,29 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
     const doc = new PDFDocument({ margin: 40, size: 'A4' });
     doc.pipe(res);
 
-    doc.fillColor('#1e293b').fontSize(18).text('Excel Data Conversion', { align: 'center' });
+    // 1. Register Bangla Font (kalpurush.ttf matching exact folder file name)
+    const fontPath = path.join(__dirname, 'fonts', 'kalpurush.ttf');
+    doc.registerFont('BanglaFont', fontPath);
+
+    // 2. Title with Bangla Support
+    doc.font('BanglaFont').fontSize(18).fillColor('#1e293b').text('Excel Data Conversion', { align: 'center' });
     doc.moveDown(1.5);
 
+    // 3. Render Excel Rows
     sheetData.forEach((row, index) => {
-      const rowText = row.join('   |   ');
-      if (index === 0) {
-        doc.fillColor('#0f172a').fontSize(11).font('Helvetica-Bold').text(rowText);
-        doc.moveDown(0.3);
-        doc.strokeColor('#cbd5e1').lineWidth(1).moveTo(40, doc.y).lineTo(555, doc.y).stroke();
-        doc.moveDown(0.5);
-      } else {
-        doc.fillColor('#334155').fontSize(10).font('Helvetica').text(rowText);
-        doc.moveDown(0.4);
+      const cleanRow = row.map(cell => (cell !== undefined && cell !== null) ? cell : '');
+      const rowText = cleanRow.join('   |   ');
+      
+      if (rowText.trim().length > 0) {
+        if (index === 0) {
+          doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(rowText);
+          doc.moveDown(0.3);
+          doc.strokeColor('#cbd5e1').lineWidth(1).moveTo(40, doc.y).lineTo(555, doc.y).stroke();
+          doc.moveDown(0.5);
+        } else {
+          doc.font('BanglaFont').fontSize(10).fillColor('#334155').text(rowText);
+          doc.moveDown(0.4);
+        }
       }
     });
 
@@ -45,7 +56,7 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   }
 });
 
-// Word to PDF Endpoint (Text extraction format)
+// Word to PDF Endpoint
 app.post('/api/convert-word', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -60,9 +71,12 @@ app.post('/api/convert-word', upload.single('file'), (req, res) => {
     const doc = new PDFDocument({ margin: 40, size: 'A4' });
     doc.pipe(res);
 
-    doc.fillColor('#1e293b').fontSize(18).text('Word Document Conversion', { align: 'center' });
+    const fontPath = path.join(__dirname, 'fonts', 'kalpurush.ttf');
+    doc.registerFont('BanglaFont', fontPath);
+
+    doc.font('BanglaFont').fontSize(18).fillColor('#1e293b').text('Word Document Conversion', { align: 'center' });
     doc.moveDown(1.5);
-    doc.fillColor('#334155').fontSize(11).font('Helvetica').text(fileContent);
+    doc.font('BanglaFont').fontSize(11).fillColor('#334155').text(fileContent);
 
     doc.end();
   } catch (error) {
@@ -83,7 +97,6 @@ app.get('/', (req, res) => {
     </head>
     <body class="bg-slate-100 text-slate-800 min-h-screen font-sans">
 
-      <!-- Header -->
       <header class="bg-white border-b border-slate-200 py-4 px-8 flex justify-between items-center shadow-sm">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-md">
@@ -91,44 +104,40 @@ app.get('/', (req, res) => {
           </div>
           <div>
             <h1 class="text-xl font-bold text-slate-800 leading-tight">DocTransform Studio</h1>
-            <p class="text-xs text-slate-500">Ultra-Fast Workspace for Excel & Word to PDF</p>
+            <p class="text-xs text-slate-500">Bangla & English Supported PDF Converter</p>
           </div>
         </div>
         <div class="bg-emerald-50 text-emerald-600 border border-emerald-200 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full bg-emerald-500"></span> 100% Private & Serverless
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span> 100% Bangla Support Enabled
         </div>
       </header>
 
       <main class="max-w-5xl mx-auto py-10 px-4">
         
-        <!-- Navigation Options -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           
-          <!-- Excel Option -->
           <button id="excelTab" onclick="switchMode('excel')" class="bg-white p-6 rounded-2xl border-2 border-indigo-600 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-4 cursor-pointer">
             <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-2xl font-bold shrink-0">
               📊
             </div>
             <div>
               <h3 class="font-bold text-slate-800 text-lg">EXCEL TO PDF</h3>
-              <p class="text-slate-500 text-xs mt-1">Convert .xlsx & .xls spreadsheets into formatted PDF reports</p>
+              <p class="text-slate-500 text-xs mt-1">Bangla & English .xlsx to PDF conversion</p>
             </div>
           </button>
 
-          <!-- Word Option -->
           <button id="wordTab" onclick="switchMode('word')" class="bg-white p-6 rounded-2xl border border-slate-200 opacity-60 hover:opacity-100 transition-all text-left flex items-start gap-4 cursor-pointer">
             <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center text-2xl font-bold shrink-0">
               📝
             </div>
             <div>
               <h3 class="font-bold text-slate-800 text-lg">WORD TO PDF</h3>
-              <p class="text-slate-500 text-xs mt-1">Convert text documents into clean printable PDF files</p>
+              <p class="text-slate-500 text-xs mt-1">Convert text documents into PDF</p>
             </div>
           </button>
 
         </div>
 
-        <!-- Main Converter Box -->
         <div class="bg-white rounded-3xl border border-slate-200 p-10 shadow-sm text-center">
           
           <form id="convertForm" action="/api/convert-excel" method="post" enctype="multipart/form-data">
@@ -163,10 +172,7 @@ app.get('/', (req, res) => {
       </main>
 
       <script>
-        let currentMode = 'excel';
-
         function switchMode(mode) {
-          currentMode = mode;
           const form = document.getElementById('convertForm');
           const fileInput = document.getElementById('fileInput');
           const excelTab = document.getElementById('excelTab');
