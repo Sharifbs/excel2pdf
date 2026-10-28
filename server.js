@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const XLSX = require('xlsx');
 const PDFDocument = require('pdfkit');
+const docx = require('docx');
 const path = require('path');
 
 const app = express();
@@ -41,11 +42,11 @@ function generateQuestionPDF(rawData, res, docTitle = 'ঢাবি ভর্ত
     const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
 
     if (qText) {
-      // Question Text with good line height
+      // Question Text
       doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(`প্রশ্ন ${index + 1}. ${qText}`, { lineGap: 4 });
       doc.moveDown(0.4);
 
-      // Render Options with clear line separation
+      // Options Array
       const options = [
         { key: 'A', label: '(A)', val: optA },
         { key: 'B', label: '(B)', val: optB },
@@ -53,7 +54,7 @@ function generateQuestionPDF(rawData, res, docTitle = 'ঢাবি ভর্ত
         { key: 'D', label: '(D)', val: optD }
       ];
 
-      // Format Options String with Answer Highlight
+      // Highlight Correct Answer Option
       const formattedOptions = options.map(opt => {
         const isCorrect = (opt.key === correctOpt);
         if (isCorrect) {
@@ -70,7 +71,6 @@ function generateQuestionPDF(rawData, res, docTitle = 'ঢাবি ভর্ত
         doc.font('BanglaFont').fontSize(9.5).fillColor('#047857').text(`ব্যাখ্যা: ${explanation}`, { indent: 15, lineGap: 4 });
       }
 
-      // Extra line space between questions
       doc.moveDown(1.4);
     }
   });
@@ -78,7 +78,7 @@ function generateQuestionPDF(rawData, res, docTitle = 'ঢাবি ভর্ত
   doc.end();
 }
 
-// Excel to PDF Endpoint
+// 1. Excel to PDF Endpoint
 app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -95,31 +95,90 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   }
 });
 
-// Word / TXT to PDF Endpoint
-app.post('/api/convert-word', upload.single('file'), (req, res) => {
+// 2. Excel to Word (.docx) Endpoint
+app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).send('Please upload a file.');
+      return res.status(400).send('Please upload an Excel file.');
     }
 
-    const fileContent = req.file.buffer.toString('utf-8');
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="word-converted.pdf"');
+    const docParagraphs = [
+      new docx.Paragraph({
+        children: [
+          new docx.TextRun({ text: "ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান", bold: true, size: 32 })
+        ],
+        alignment: docx.AlignmentType.CENTER
+      }),
+      new docx.Paragraph({
+        children: [
+          new docx.TextRun({ text: "উৎসব / বিষয়: C-Unit Admission Test", color: "64748B", size: 20 })
+        ],
+        alignment: docx.AlignmentType.CENTER
+      }),
+      new docx.Paragraph({ text: "" })
+    ];
 
-    const doc = new PDFDocument({ margin: 40, size: 'A4' });
-    doc.pipe(res);
+    rawData.forEach((q, index) => {
+      const qText = q.question_text || q.Question || q.question || '';
+      const optA = q.option_a || q['Option A'] || q.a || '';
+      const optB = q.option_b || q['Option B'] || q.b || '';
+      const optC = q.option_c || q['Option C'] || q.c || '';
+      const optD = q.option_d || q['Option D'] || q.d || '';
+      const correctOpt = String(q.correct_option || q.Answer || q.correct || '').trim().toUpperCase();
+      const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
 
-    const fontPath = path.join(__dirname, 'fonts', 'kalpurush.ttf');
-    doc.registerFont('BanglaFont', fontPath);
+      if (qText) {
+        // Question Line
+        docParagraphs.push(
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({ text: `প্রশ্ন ${index + 1}. ${qText}`, bold: true, size: 22 })
+            ]
+          })
+        );
 
-    doc.font('BanglaFont').fontSize(18).fillColor('#1e293b').text('Word Document Conversion', { align: 'center' });
-    doc.moveDown(1.5);
-    doc.font('BanglaFont').fontSize(11).fillColor('#334155').text(fileContent, { lineGap: 4 });
+        // Options Line
+        const optionsStr = `(A) ${optA}      (B) ${optB}      (C) ${optC}      (D) ${optD}`;
+        docParagraphs.push(
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({ text: optionsStr, size: 20 })
+            ],
+            indent: { left: 360 }
+          })
+        );
 
-    doc.end();
+        // Explanation Line
+        if (explanation) {
+          docParagraphs.push(
+            new docx.Paragraph({
+              children: [
+                new docx.TextRun({ text: `ব্যাখ্যা: ${explanation}`, color: "047857", size: 18 })
+              ],
+              indent: { left: 360 }
+            })
+          );
+        }
+
+        docParagraphs.push(new docx.Paragraph({ text: "" }));
+      }
+    });
+
+    const docFile = new docx.Document({
+      sections: [{ children: docParagraphs }]
+    });
+
+    const buffer = await docx.Packer.toBuffer(docFile);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', 'attachment; filename="question-paper.docx"');
+    res.send(buffer);
   } catch (error) {
-    res.status(500).send('Error processing Word file: ' + error.message);
+    res.status(500).send('Error generating Word document: ' + error.message);
   }
 });
 
@@ -140,7 +199,7 @@ app.get('/', (req, res) => {
           <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-md">📄</div>
           <div>
             <h1 class="text-xl font-bold text-slate-800 leading-tight">DocTransform Studio</h1>
-            <p class="text-xs text-slate-500">Bangla & English Supported PDF Converter</p>
+            <p class="text-xs text-slate-500">Excel to PDF & Word Question Generator</p>
           </div>
         </div>
       </header>
@@ -159,8 +218,8 @@ app.get('/', (req, res) => {
           <button id="wordTab" onclick="switchMode('word')" class="bg-white p-6 rounded-2xl border border-slate-200 opacity-60 hover:opacity-100 transition-all text-left flex items-start gap-4 cursor-pointer">
             <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center text-2xl font-bold shrink-0">📝</div>
             <div>
-              <h3 class="font-bold text-slate-800 text-lg">WORD TO PDF</h3>
-              <p class="text-slate-500 text-xs mt-1">Convert text documents into PDF</p>
+              <h3 class="font-bold text-slate-800 text-lg">EXCEL TO WORD</h3>
+              <p class="text-slate-500 text-xs mt-1">Convert MCQ Excel into Word Document</p>
             </div>
           </button>
         </div>
@@ -178,7 +237,7 @@ app.get('/', (req, res) => {
 
             <div id="fileInfo" class="hidden mb-6 p-4 bg-slate-100 rounded-xl flex items-center justify-between">
               <span id="selectedFileName" class="text-sm font-medium text-slate-700"></span>
-              <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-2 rounded-lg text-sm shadow-sm transition-all">
+              <button type="submit" id="submitBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-2 rounded-lg text-sm shadow-sm transition-all">
                 Download PDF Now
               </button>
             </div>
@@ -195,6 +254,7 @@ app.get('/', (req, res) => {
           const dragText = document.getElementById('dragText');
           const subText = document.getElementById('subText');
           const fileInfo = document.getElementById('fileInfo');
+          const submitBtn = document.getElementById('submitBtn');
           
           fileInput.value = '';
           fileInfo.classList.add('hidden');
@@ -204,15 +264,17 @@ app.get('/', (req, res) => {
             fileInput.accept = '.xlsx, .xls';
             excelTab.className = 'bg-white p-6 rounded-2xl border-2 border-indigo-600 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-4 cursor-pointer';
             wordTab.className = 'bg-white p-6 rounded-2xl border border-slate-200 opacity-60 hover:opacity-100 transition-all text-left flex items-start gap-4 cursor-pointer';
-            dragText.textContent = 'Excel ফাইল আপলোড করুন';
+            dragText.textContent = 'Excel প্রশ্ন ফাইল আপলোড করুন';
             subText.textContent = 'ফাইল সিলেক্ট করে সুন্দর Question Paper PDF বানিয়ে নিন';
+            submitBtn.textContent = 'Download PDF Now';
           } else {
-            form.action = '/api/convert-word';
-            fileInput.accept = '.docx, .doc, .txt';
+            form.action = '/api/convert-excel-to-word';
+            fileInput.accept = '.xlsx, .xls';
             wordTab.className = 'bg-white p-6 rounded-2xl border-2 border-indigo-600 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-4 cursor-pointer';
             excelTab.className = 'bg-white p-6 rounded-2xl border border-slate-200 opacity-60 hover:opacity-100 transition-all text-left flex items-start gap-4 cursor-pointer';
-            dragText.textContent = 'Word ফাইল আপলোড করুন';
-            subText.textContent = 'আপনার Word Document সিলেক্ট করে PDF বানিয়ে নিন';
+            dragText.textContent = 'Excel প্রশ্ন ফাইল আপলোড করুন';
+            subText.textContent = 'ফাইল সিলেক্ট করে Word Document (.docx) বানিয়ে নিন';
+            submitBtn.textContent = 'Download Word (.docx) Now';
           }
         }
 
