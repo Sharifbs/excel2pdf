@@ -7,7 +7,7 @@ const path = require('path');
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Excel to PDF (Question Paper Format) Endpoint
+// Excel to PDF (Question Paper with Bold Answer Option Label Only)
 app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -38,46 +38,52 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
     doc.strokeColor('#cbd5e1').lineWidth(1).moveTo(40, doc.y).lineTo(555, doc.y).stroke();
     doc.moveDown(1);
 
-    // 3. Render Questions in Exam Paper Format
+    // 3. Render Questions with Bold Option Number Only
     rawData.forEach((q, index) => {
-      // Extract data safely
       const qText = q.question_text || q.Question || q.question || '';
       const optA = q.option_a || q['Option A'] || q.a || '';
       const optB = q.option_b || q['Option B'] || q.b || '';
       const optC = q.option_c || q['Option C'] || q.c || '';
       const optD = q.option_d || q['Option D'] || q.d || '';
+      
+      // Get correct option letter (A, B, C, or D)
       const correctOpt = String(q.correct_option || q.Answer || q.correct || '').trim().toUpperCase();
 
       if (qText) {
-        // Question Text
-        doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(`প্রশ্ন ${index + 1}. ${qText}`, { lineGap: 3 });
+        // Render Question Text
+        doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(`প্রশ্ন ${index + 1}. ${qText}`, { lineGap: 4 });
         
-        // Options List
+        // Define options array
         const options = [
-          { key: 'A', text: `(A) ${optA}` },
-          { key: 'B', text: `(B) ${optB}` },
-          { key: 'C', text: `(C) ${optC}` },
-          { key: 'D', text: `(D) ${optD}` }
+          { key: 'A', label: '(A)', val: optA },
+          { key: 'B', label: '(B)', val: optB },
+          { key: 'C', label: '(C)', val: optC },
+          { key: 'D', label: '(D)', val: optD }
         ];
 
         let startX = 55;
         const currentY = doc.y;
 
-        // Render each option, making only the correct answer bold
+        // Render each option: Bold only the option letter (e.g. (D)) if correct
         options.forEach((opt) => {
           const isCorrect = (opt.key === correctOpt);
           
           if (isCorrect) {
-            doc.font('BanglaFont').fontSize(10.5).fillColor('#000000').text(opt.text, startX, currentY, { continued: true });
+            // Bold & Highlight option number e.g. (D)
+            doc.font('BanglaFont').fontSize(10.5).fillColor('#000000').text(`${opt.label} `, startX, currentY, { continued: true });
+            doc.font('BanglaFont').fontSize(10).fillColor('#475569').text(`${opt.val}`, { continued: true });
           } else {
-            doc.font('BanglaFont').fontSize(10).fillColor('#475569').text(opt.text, startX, currentY, { continued: true });
+            // Normal option style
+            doc.font('BanglaFont').fontSize(10).fillColor('#475569').text(`${opt.label} ${opt.val}`, startX, currentY, { continued: true });
           }
           
+          // Space between options
           doc.text('      ', { continued: true });
         });
 
+        // Reset text flow line
         doc.text('');
-        doc.moveDown(0.8);
+        doc.moveDown(1.2);
       }
     });
 
@@ -123,7 +129,7 @@ app.get('/', (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>DocTransform Studio - Question Paper Generator</title>
+      <title>DocTransform Studio - Clean Question Paper</title>
       <script src="https://cdn.tailwindcss.com"></script>
     </head>
     <body class="bg-slate-100 text-slate-800 min-h-screen font-sans">
@@ -132,7 +138,7 @@ app.get('/', (req, res) => {
           <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-md">📝</div>
           <div>
             <h1 class="text-xl font-bold text-slate-800 leading-tight">DocTransform Studio</h1>
-            <p class="text-xs text-slate-500">Excel MCQ to PDF Question Paper Converter</p>
+            <p class="text-xs text-slate-500">MCQ Excel to PDF Question Generator</p>
           </div>
         </div>
       </header>
@@ -143,7 +149,7 @@ app.get('/', (req, res) => {
             <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50/50 hover:bg-indigo-50/30 rounded-2xl p-12 transition-all cursor-pointer flex flex-col items-center justify-center mb-6" onclick="document.getElementById('fileInput').click()">
               <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-4 text-3xl">📥</div>
               <h3 class="text-lg font-bold text-slate-700 mb-1">Excel প্রশ্ন ফাইল আপলোড করুন</h3>
-              <p class="text-slate-400 text-xs mb-6">DU Admission Excel ফাইল সিলেক্ট করে সুন্দর Question Paper PDF ডাউনলোড করুন</p>
+              <p class="text-slate-400 text-xs mb-6">ফাইল সিলেক্ট করে শুধুমাত্র বোল্ড উত্তরসহ Question Paper ডাউনলোড করুন</p>
               <span class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-6 py-3 rounded-xl shadow-sm transition-all inline-block">ফাইল সিলেক্ট করুন</span>
               <input type="file" name="file" accept=".xlsx, .xls" class="hidden" required id="fileInput" onchange="handleFileChange(this)" />
             </div>
@@ -151,7 +157,7 @@ app.get('/', (req, res) => {
             <div id="fileInfo" class="hidden mb-6 p-4 bg-slate-100 rounded-xl flex items-center justify-between">
               <span id="selectedFileName" class="text-sm font-medium text-slate-700"></span>
               <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-2 rounded-lg text-sm shadow-sm transition-all">
-                Download Question Paper PDF
+                Download PDF
               </button>
             </div>
           </form>
