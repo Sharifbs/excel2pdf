@@ -7,7 +7,7 @@ const path = require('path');
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Excel to PDF Endpoint (Bold Option + Explanation Only, No 'Correct Answer: X')
+// Excel to PDF Endpoint (Bold Option Label + Explanation Included, No 'Answer' Text)
 app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -50,27 +50,28 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
       const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
 
       if (qText) {
-        // Question Text
+        // Render Question Text
         doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(`প্রশ্ন ${index + 1}. ${qText}`, { lineGap: 3 });
         
         const options = [
-          { key: 'A', text: `(A) ${optA}` },
-          { key: 'B', text: `(B) ${optB}` },
-          { key: 'C', text: `(C) ${optC}` },
-          { key: 'D', text: `(D) ${optD}` }
+          { key: 'A', label: '(A)', val: optA },
+          { key: 'B', label: '(B)', val: optB },
+          { key: 'C', label: '(C)', val: optC },
+          { key: 'D', label: '(D)', val: optD }
         ];
 
         let startX = 55;
         const currentY = doc.y;
 
-        // Render Options: Highlight/Bold the correct option including text (e.g., (D) মহৎ+ইমন)
+        // Render Options: Only bold the label like (D) for the correct option
         options.forEach((opt) => {
           const isCorrect = (opt.key === correctOpt);
           
           if (isCorrect) {
-            doc.font('BanglaFont').fontSize(10.5).fillColor('#000000').text(opt.text, startX, currentY, { continued: true });
+            doc.font('BanglaFont').fontSize(10.5).fillColor('#000000').text(`${opt.label} `, startX, currentY, { continued: true });
+            doc.font('BanglaFont').fontSize(10).fillColor('#475569').text(`${opt.val}`, { continued: true });
           } else {
-            doc.font('BanglaFont').fontSize(10).fillColor('#475569').text(opt.text, startX, currentY, { continued: true });
+            doc.font('BanglaFont').fontSize(10).fillColor('#475569').text(`${opt.label} ${opt.val}`, startX, currentY, { continued: true });
           }
           
           doc.text('      ', { continued: true });
@@ -79,7 +80,7 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
         doc.text('');
         doc.moveDown(0.4);
 
-        // Render Explanation only (Without "সঠিক উত্তর: X")
+        // Render Explanation Text Only (Without 'সঠিক উত্তর: X')
         if (explanation) {
           doc.font('BanglaFont').fontSize(9).fillColor('#047857').text(`ব্যাখ্যা: ${explanation}`, { indent: 15, lineGap: 3 });
         }
@@ -150,7 +151,7 @@ app.get('/', (req, res) => {
             <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50/50 hover:bg-indigo-50/30 rounded-2xl p-12 transition-all cursor-pointer flex flex-col items-center justify-center mb-6" onclick="document.getElementById('fileInput').click()">
               <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-4 text-3xl">📥</div>
               <h3 class="text-lg font-bold text-slate-700 mb-1">Excel প্রশ্ন ফাইল আপলোড করুন</h3>
-              <p class="text-slate-400 text-xs mb-6">ফাইল সিলেক্ট করে বোল্ড উত্তর ও ব্যাখ্যা সহ Question Paper ডাউনলোড করুন</p>
+              <p class="text-slate-400 text-xs mb-6">ফাইল সিলেক্ট করে বোল্ড অপশন লেবেল ও ব্যাখ্যা সহ Question Paper ডাউনলোড করুন</p>
               <span class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-6 py-3 rounded-xl shadow-sm transition-all inline-block">ফাইল সিলেক্ট করুন</span>
               <input type="file" name="file" accept=".xlsx, .xls" class="hidden" required id="fileInput" onchange="handleFileChange(this)" />
             </div>
