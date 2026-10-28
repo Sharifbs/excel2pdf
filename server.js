@@ -7,7 +7,78 @@ const path = require('path');
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Excel to PDF Endpoint (Clean MCQ Question Paper Format)
+// Helper function to build PDF logic safely
+function generateQuestionPDF(rawData, res, docTitle = 'ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান') {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename="question-paper.pdf"');
+
+  const doc = new PDFDocument({ margin: 40, size: 'A4' });
+  doc.pipe(res);
+
+  // 1. Register Font
+  const fontPath = path.join(__dirname, 'fonts', 'kalpurush.ttf');
+  doc.registerFont('BanglaFont', fontPath);
+
+  // 2. Document Header
+  doc.font('BanglaFont').fontSize(18).fillColor('#0f172a').text(docTitle, { align: 'center' });
+  doc.moveDown(0.3);
+  doc.fontSize(10).fillColor('#64748b').text('উৎসব / বিষয়: C-Unit Admission Test', { align: 'center' });
+  doc.moveDown(0.5);
+
+  // Header Divider Line
+  doc.strokeColor('#cbd5e1').lineWidth(1).moveTo(40, doc.y).lineTo(555, doc.y).stroke();
+  doc.moveDown(1.2);
+
+  // 3. Render Questions
+  rawData.forEach((q, index) => {
+    const qText = q.question_text || q.Question || q.question || '';
+    const optA = q.option_a || q['Option A'] || q.a || '';
+    const optB = q.option_b || q['Option B'] || q.b || '';
+    const optC = q.option_c || q['Option C'] || q.c || '';
+    const optD = q.option_d || q['Option D'] || q.d || '';
+    
+    const correctOpt = String(q.correct_option || q.Answer || q.correct || '').trim().toUpperCase();
+    const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
+
+    if (qText) {
+      // Question Text with good line height
+      doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(`প্রশ্ন ${index + 1}. ${qText}`, { lineGap: 4 });
+      doc.moveDown(0.4);
+
+      // Render Options with clear line separation
+      const options = [
+        { key: 'A', label: '(A)', val: optA },
+        { key: 'B', label: '(B)', val: optB },
+        { key: 'C', label: '(C)', val: optC },
+        { key: 'D', label: '(D)', val: optD }
+      ];
+
+      // Format Options String with Answer Highlight
+      const formattedOptions = options.map(opt => {
+        const isCorrect = (opt.key === correctOpt);
+        if (isCorrect) {
+          return `▶ ${opt.label} ${opt.val}`;
+        }
+        return `   ${opt.label} ${opt.val}`;
+      }).join('     ');
+
+      doc.font('BanglaFont').fontSize(10).fillColor('#334155').text(formattedOptions, { indent: 15, lineGap: 4 });
+      doc.moveDown(0.5);
+
+      // Render Explanation
+      if (explanation) {
+        doc.font('BanglaFont').fontSize(9.5).fillColor('#047857').text(`ব্যাখ্যা: ${explanation}`, { indent: 15, lineGap: 4 });
+      }
+
+      // Extra line space between questions
+      doc.moveDown(1.4);
+    }
+  });
+
+  doc.end();
+}
+
+// Excel to PDF Endpoint
 app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -18,87 +89,13 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
     const sheetName = workbook.SheetNames[0];
     const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="question-paper.pdf"');
-
-    const doc = new PDFDocument({ margin: 40, size: 'A4' });
-    doc.pipe(res);
-
-    // 1. Register Bangla Font
-    const fontPath = path.join(__dirname, 'fonts', 'kalpurush.ttf');
-    doc.registerFont('BanglaFont', fontPath);
-
-    // 2. Question Paper Header
-    doc.font('BanglaFont').fontSize(18).fillColor('#0f172a').text('ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান', { align: 'center' });
-    doc.moveDown(0.3);
-    doc.fontSize(10).fillColor('#64748b').text('উৎসব / বিষয়: C-Unit Admission Test', { align: 'center' });
-    doc.moveDown(0.5);
-    
-    // Header underline divider
-    doc.strokeColor('#cbd5e1').lineWidth(1).moveTo(40, doc.y).lineTo(555, doc.y).stroke();
-    doc.moveDown(1);
-
-    // 3. Render Questions
-    rawData.forEach((q, index) => {
-      const qText = q.question_text || q.Question || q.question || '';
-      const optA = q.option_a || q['Option A'] || q.a || '';
-      const optB = q.option_b || q['Option B'] || q.b || '';
-      const optC = q.option_c || q['Option C'] || q.c || '';
-      const optD = q.option_d || q['Option D'] || q.d || '';
-      
-      const correctOpt = String(q.correct_option || q.Answer || q.correct || '').trim().toUpperCase();
-      const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
-
-      if (qText) {
-        // Render Question Text
-        doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(`প্রশ্ন ${index + 1}. ${qText}`, { lineGap: 3 });
-        
-        const options = [
-          { key: 'A', label: '(A)', val: optA },
-          { key: 'B', label: '(B)', val: optB },
-          { key: 'C', label: '(C)', val: optC },
-          { key: 'D', label: '(D)', val: optD }
-        ];
-
-        let startX = 55;
-        const currentY = doc.y;
-
-        // Render Options inline safely
-        options.forEach((opt) => {
-          const isCorrect = (opt.key === correctOpt);
-          
-          if (isCorrect) {
-            // Bold option label for correct answer
-            doc.font('BanglaFont').fontSize(10.5).fillColor('#000000').text(`${opt.label} `, startX, currentY, { continued: true });
-            doc.font('BanglaFont').fontSize(10).fillColor('#475569').text(`${opt.val}`, { continued: true });
-          } else {
-            // Normal option
-            doc.font('BanglaFont').fontSize(10).fillColor('#475569').text(`${opt.label} ${opt.val}`, startX, currentY, { continued: true });
-          }
-          
-          doc.text('      ', { continued: true });
-        });
-
-        // Break line to calculate vertical Y space properly
-        doc.text('');
-        doc.moveDown(0.3);
-
-        // Render Explanation Text safely below options
-        if (explanation) {
-          doc.font('BanglaFont').fontSize(9).fillColor('#047857').text(`ব্যাখ্যা: ${explanation}`, { indent: 15, lineGap: 3 });
-        }
-
-        doc.moveDown(0.8);
-      }
-    });
-
-    doc.end();
+    generateQuestionPDF(rawData, res, 'ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান');
   } catch (error) {
     res.status(500).send('Error generating question paper PDF: ' + error.message);
   }
 });
 
-// Word to PDF Endpoint
+// Word / TXT to PDF Endpoint
 app.post('/api/convert-word', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -118,7 +115,7 @@ app.post('/api/convert-word', upload.single('file'), (req, res) => {
 
     doc.font('BanglaFont').fontSize(18).fillColor('#1e293b').text('Word Document Conversion', { align: 'center' });
     doc.moveDown(1.5);
-    doc.font('BanglaFont').fontSize(11).fillColor('#334155').text(fileContent);
+    doc.font('BanglaFont').fontSize(11).fillColor('#334155').text(fileContent, { lineGap: 4 });
 
     doc.end();
   } catch (error) {
@@ -143,7 +140,7 @@ app.get('/', (req, res) => {
           <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-md">📄</div>
           <div>
             <h1 class="text-xl font-bold text-slate-800 leading-tight">DocTransform Studio</h1>
-            <p class="text-xs text-slate-500">Excel & Word to PDF Converter</p>
+            <p class="text-xs text-slate-500">Bangla & English Supported PDF Converter</p>
           </div>
         </div>
       </header>
@@ -173,7 +170,7 @@ app.get('/', (req, res) => {
           <form id="convertForm" action="/api/convert-excel" method="post" enctype="multipart/form-data">
             <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50/50 hover:bg-indigo-50/30 rounded-2xl p-12 transition-all cursor-pointer flex flex-col items-center justify-center mb-6" onclick="document.getElementById('fileInput').click()">
               <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-4 text-3xl">📥</div>
-              <h3 id="dragText" class="text-lg font-bold text-slate-700 mb-1">Excel ফাইল আপলোড করুন</h3>
+              <h3 id="dragText" class="text-lg font-bold text-slate-700 mb-1">Excel প্রশ্ন ফাইল আপলোড করুন</h3>
               <p id="subText" class="text-slate-400 text-xs mb-6">ফাইল সিলেক্ট করে সুন্দর Question Paper PDF বানিয়ে নিন</p>
               <span class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-6 py-3 rounded-xl shadow-sm transition-all inline-block">ফাইল সিলেক্ট করুন</span>
               <input type="file" name="file" accept=".xlsx, .xls" class="hidden" required id="fileInput" onchange="handleFileChange(this)" />
