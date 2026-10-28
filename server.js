@@ -8,77 +8,7 @@ const path = require('path');
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Helper function to build PDF logic safely
-function generateQuestionPDF(rawData, res, docTitle = 'ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান') {
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', 'attachment; filename="question-paper.pdf"');
-
-  const doc = new PDFDocument({ margin: 40, size: 'A4' });
-  doc.pipe(res);
-
-  // 1. Register Font
-  const fontPath = path.join(__dirname, 'fonts', 'kalpurush.ttf');
-  doc.registerFont('BanglaFont', fontPath);
-
-  // 2. Document Header
-  doc.font('BanglaFont').fontSize(18).fillColor('#0f172a').text(docTitle, { align: 'center' });
-  doc.moveDown(0.3);
-  doc.fontSize(10).fillColor('#64748b').text('উৎসব / বিষয়: C-Unit Admission Test', { align: 'center' });
-  doc.moveDown(0.5);
-
-  // Header Divider Line
-  doc.strokeColor('#cbd5e1').lineWidth(1).moveTo(40, doc.y).lineTo(555, doc.y).stroke();
-  doc.moveDown(1.2);
-
-  // 3. Render Questions
-  rawData.forEach((q, index) => {
-    const qText = q.question_text || q.Question || q.question || '';
-    const optA = q.option_a || q['Option A'] || q.a || '';
-    const optB = q.option_b || q['Option B'] || q.b || '';
-    const optC = q.option_c || q['Option C'] || q.c || '';
-    const optD = q.option_d || q['Option D'] || q.d || '';
-    
-    const correctOpt = String(q.correct_option || q.Answer || q.correct || '').trim().toUpperCase();
-    const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
-
-    if (qText) {
-      // Question Text
-      doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(`প্রশ্ন ${index + 1}. ${qText}`, { lineGap: 4 });
-      doc.moveDown(0.4);
-
-      // Options Array
-      const options = [
-        { key: 'A', label: '(A)', val: optA },
-        { key: 'B', label: '(B)', val: optB },
-        { key: 'C', label: '(C)', val: optC },
-        { key: 'D', label: '(D)', val: optD }
-      ];
-
-      // Highlight Correct Answer Option
-      const formattedOptions = options.map(opt => {
-        const isCorrect = (opt.key === correctOpt);
-        if (isCorrect) {
-          return `▶ ${opt.label} ${opt.val}`;
-        }
-        return `   ${opt.label} ${opt.val}`;
-      }).join('     ');
-
-      doc.font('BanglaFont').fontSize(10).fillColor('#334155').text(formattedOptions, { indent: 15, lineGap: 4 });
-      doc.moveDown(0.5);
-
-      // Render Explanation
-      if (explanation) {
-        doc.font('BanglaFont').fontSize(9.5).fillColor('#047857').text(`ব্যাখ্যা: ${explanation}`, { indent: 15, lineGap: 4 });
-      }
-
-      doc.moveDown(1.4);
-    }
-  });
-
-  doc.end();
-}
-
-// 1. Excel to PDF Endpoint
+// 1. Excel to PDF Endpoint (Clean Alignment & Spacing)
 app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -89,13 +19,75 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
     const sheetName = workbook.SheetNames[0];
     const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-    generateQuestionPDF(rawData, res, 'ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="question-paper.pdf"');
+
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    doc.pipe(res);
+
+    // Register Bangla Font
+    const fontPath = path.join(__dirname, 'fonts', 'kalpurush.ttf');
+    doc.registerFont('BanglaFont', fontPath);
+
+    // Document Header
+    doc.font('BanglaFont').fontSize(18).fillColor('#0f172a').text('ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান', { align: 'center' });
+    doc.moveDown(0.3);
+    doc.fontSize(10).fillColor('#64748b').text('উৎসব / বিষয়: C-Unit Admission Test', { align: 'center' });
+    doc.moveDown(0.5);
+
+    // Header Divider Line
+    doc.strokeColor('#cbd5e1').lineWidth(1).moveTo(40, doc.y).lineTo(555, doc.y).stroke();
+    doc.moveDown(1.2);
+
+    // Render Questions
+    rawData.forEach((q, index) => {
+      const qText = q.question_text || q.Question || q.question || '';
+      const optA = q.option_a || q['Option A'] || q.a || '';
+      const optB = q.option_b || q['Option B'] || q.b || '';
+      const optC = q.option_c || q['Option C'] || q.c || '';
+      const optD = q.option_d || q['Option D'] || q.d || '';
+      
+      const correctOpt = String(q.correct_option || q.Answer || q.correct || '').trim().toUpperCase();
+      const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
+
+      if (qText) {
+        // Question Text
+        doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(`প্রশ্ন ${index + 1}. ${qText}`, { lineGap: 4 });
+        doc.moveDown(0.3);
+
+        // Options Array
+        const options = [
+          { key: 'A', label: '(A)', val: optA },
+          { key: 'B', label: '(B)', val: optB },
+          { key: 'C', label: '(C)', val: optC },
+          { key: 'D', label: '(D)', val: optD }
+        ];
+
+        // Options Text formatted cleanly
+        const optionsStr = options.map(opt => {
+          const isCorrect = (opt.key === correctOpt);
+          return isCorrect ? `[ ${opt.label} ${opt.val} ]` : `${opt.label} ${opt.val}`;
+        }).join('     ');
+
+        doc.font('BanglaFont').fontSize(10).fillColor('#334155').text(optionsStr, { indent: 15, lineGap: 4 });
+        doc.moveDown(0.4);
+
+        // Explanation Line
+        if (explanation) {
+          doc.font('BanglaFont').fontSize(9.5).fillColor('#047857').text(`ব্যাখ্যা: ${explanation}`, { indent: 15, lineGap: 4 });
+        }
+
+        doc.moveDown(1.2);
+      }
+    });
+
+    doc.end();
   } catch (error) {
     res.status(500).send('Error generating question paper PDF: ' + error.message);
   }
 });
 
-// 2. Excel to Word (.docx) Endpoint
+// 2. Excel to Word (.docx) Endpoint (With Proper Formatting & Correct Indicator)
 app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -132,39 +124,60 @@ app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) =
       const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
 
       if (qText) {
-        // Question Line
+        // Question Title
         docParagraphs.push(
           new docx.Paragraph({
             children: [
               new docx.TextRun({ text: `প্রশ্ন ${index + 1}. ${qText}`, bold: true, size: 22 })
-            ]
+            ],
+            spacing: { before: 120, after: 60 }
           })
         );
 
-        // Options Line
-        const optionsStr = `(A) ${optA}      (B) ${optB}      (C) ${optC}      (D) ${optD}`;
+        // Options List with Underline/Bold indicator for Correct Answer in Word
+        const options = [
+          { key: 'A', label: '(A)', val: optA },
+          { key: 'B', label: '(B)', val: optB },
+          { key: 'C', label: '(C)', val: optC },
+          { key: 'D', label: '(D)', val: optD }
+        ];
+
+        const optionTextRuns = [];
+        options.forEach((opt, idx) => {
+          const isCorrect = (opt.key === correctOpt);
+          optionTextRuns.push(
+            new docx.TextRun({
+              text: `${opt.label} ${opt.val}`,
+              bold: isCorrect,
+              underline: isCorrect ? { type: docx.UnderlineType.SINGLE } : undefined,
+              size: 20
+            })
+          );
+          if (idx < options.length - 1) {
+            optionTextRuns.push(new docx.TextRun({ text: "     ", size: 20 }));
+          }
+        });
+
         docParagraphs.push(
           new docx.Paragraph({
-            children: [
-              new docx.TextRun({ text: optionsStr, size: 20 })
-            ],
-            indent: { left: 360 }
+            children: optionTextRuns,
+            indent: { left: 360 },
+            spacing: { after: 60 }
           })
         );
 
-        // Explanation Line
+        // Explanation
         if (explanation) {
           docParagraphs.push(
             new docx.Paragraph({
               children: [
                 new docx.TextRun({ text: `ব্যাখ্যা: ${explanation}`, color: "047857", size: 18 })
               ],
-              indent: { left: 360 }
+              indent: { left: 360 },
+              spacing: { after: 120 }
             })
           );
         }
-
-        docParagraphs.push(new docx.Paragraph({ text: "" }));
       }
     });
 
