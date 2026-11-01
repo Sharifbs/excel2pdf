@@ -28,7 +28,7 @@ app.get('/api/download-template', (req, res) => {
         option_c: "সোম",
         option_d: "বিভাকর",
         correct_option: "D",
-        Explanation: "বিভাকর অর্থ সূর্য। ইন্দু, কলাভৃৎ, সোম ও কলাধর শব্দগুলো চন্দ্র এর সমার্থক শব্দ।"
+        Explanation: "বিভাকর অর্থ সূর্য। হিন্দু, কলাভৃৎ, সোম ও কলাধর শব্দগুলো চন্দ্র এর সমার্থক শব্দ।"
       }
     ];
 
@@ -57,7 +57,7 @@ function getCorrectKey(val) {
   return str;
 }
 
-// 2. Excel to PDF Endpoint (Guaranteed Correct Answer Marking)
+// 2. Excel to PDF Endpoint (Clean Highlighted Answer Marking)
 app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -121,10 +121,10 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
           { key: 'D', label: '(D)', val: optD }
         ];
 
-        // Highlight correct answer by appending "(সঠিক)" right next to it
+        // Format options clearly with brackets for the correct answer
         const optionsStr = options.map(opt => {
           const isCorrect = (opt.key === correctOpt);
-          return isCorrect ? `${opt.label} ${opt.val} (সঠিক)` : `${opt.label} ${opt.val}`;
+          return isCorrect ? `[ ${opt.label} ${opt.val} ]` : `${opt.label} ${opt.val}`;
         }).join('     ');
 
         doc.font('BanglaFont').fontSize(10).fillColor('#0f172a').text(optionsStr, { indent: 15, lineGap: 4 });
@@ -213,10 +213,10 @@ app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) =
         const optionTextRuns = [];
         options.forEach((opt, idx) => {
           const isCorrect = (opt.key === correctOpt);
-          const markSuffix = isCorrect ? " (সঠিক)" : "";
+          const optText = isCorrect ? `[ ${opt.label} ${opt.val} ]` : `${opt.label} ${opt.val}`;
           optionTextRuns.push(
             new docx.TextRun({
-              text: `${opt.label} ${opt.val}${markSuffix}`,
+              text: optText,
               bold: isCorrect,
               underline: isCorrect ? { type: docx.UnderlineType.SINGLE } : undefined,
               size: 20
