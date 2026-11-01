@@ -8,12 +8,55 @@ const path = require('path');
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// 1. Excel to PDF Endpoint (Clean Alignment & Spacing)
+// 1. Excel Template Download Endpoint
+app.get('/api/download-template', (req, res) => {
+  try {
+    const templateData = [
+      {
+        question_text: "মহিমা শব্দের সঠিক প্রকৃতি প্রত্যয় কোনটি?",
+        option_a: "মহি+মা",
+        option_b: "মহা+ইমা",
+        option_c: "মহা+ইমন",
+        option_d: "মহৎ+ইমন",
+        correct_option: "D",
+        Explanation: "মহিমা = মহৎ + ইমন (সংস্কৃত তদ্ধিত প্রত্যয় যোগে গঠিত)।"
+      },
+      {
+        question_text: "চন্দ্র শব্দের সমার্থক শব্দ নয় কোনটি?",
+        option_a: "ইন্দু",
+        option_b: "কলাভৃৎ",
+        option_c: "সোম",
+        option_d: "বিভাকর",
+        correct_option: "D",
+        Explanation: "বিভাকর অর্থ সূর্য। হিন্দু, কলাভৃৎ, সোম ও কলাধর শব্দগুলো চন্দ্র এর সমার্থক শব্দ।"
+      }
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Questions");
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="mcq_question_template.xlsx"');
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).send('Error downloading template: ' + error.message);
+  }
+});
+
+// 2. Excel to PDF Endpoint (With Header Details: Test Name, Subject, Marks & Duration)
 app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).send('Please upload an Excel file.');
     }
+
+    const testName = req.body.testName || 'ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান';
+    const subject = req.body.subject || 'C-Unit Admission Test';
+    const fullMarks = req.body.fullMarks || '১০০';
+    const duration = req.body.duration || '১ ঘণ্টা';
 
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
@@ -29,11 +72,17 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
     const fontPath = path.join(__dirname, 'fonts', 'kalpurush.ttf');
     doc.registerFont('BanglaFont', fontPath);
 
-    // Document Header
-    doc.font('BanglaFont').fontSize(18).fillColor('#0f172a').text('ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান', { align: 'center' });
+    // Document Header - Title & Subject
+    doc.font('BanglaFont').fontSize(18).fillColor('#0f172a').text(testName, { align: 'center' });
+    doc.moveDown(0.2);
+    doc.fontSize(11).fillColor('#475569').text(`বিষয়: ${subject}`, { align: 'center' });
     doc.moveDown(0.3);
-    doc.fontSize(10).fillColor('#64748b').text('উৎসব / বিষয়: C-Unit Admission Test', { align: 'center' });
-    doc.moveDown(0.5);
+
+    // Document Header - Full Marks & Time Duration Line
+    const headerInfoY = doc.y;
+    doc.fontSize(10).fillColor('#64748b').text(`পূর্ণমান: ${fullMarks}`, 40, headerInfoY, { align: 'left' });
+    doc.fontSize(10).fillColor('#64748b').text(`সময়: ${duration}`, 40, headerInfoY, { align: 'right' });
+    doc.moveDown(0.6);
 
     // Header Divider Line
     doc.strokeColor('#cbd5e1').lineWidth(1).moveTo(40, doc.y).lineTo(555, doc.y).stroke();
@@ -55,7 +104,6 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
         doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(`প্রশ্ন ${index + 1}. ${qText}`, { lineGap: 4 });
         doc.moveDown(0.3);
 
-        // Options Array
         const options = [
           { key: 'A', label: '(A)', val: optA },
           { key: 'B', label: '(B)', val: optB },
@@ -63,7 +111,6 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
           { key: 'D', label: '(D)', val: optD }
         ];
 
-        // Options Text formatted cleanly
         const optionsStr = options.map(opt => {
           const isCorrect = (opt.key === correctOpt);
           return isCorrect ? `[ ${opt.label} ${opt.val} ]` : `${opt.label} ${opt.val}`;
@@ -72,7 +119,6 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
         doc.font('BanglaFont').fontSize(10).fillColor('#334155').text(optionsStr, { indent: 15, lineGap: 4 });
         doc.moveDown(0.4);
 
-        // Explanation Line
         if (explanation) {
           doc.font('BanglaFont').fontSize(9.5).fillColor('#047857').text(`ব্যাখ্যা: ${explanation}`, { indent: 15, lineGap: 4 });
         }
@@ -87,12 +133,17 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   }
 });
 
-// 2. Excel to Word (.docx) Endpoint (With Proper Formatting & Correct Indicator)
+// 3. Excel to Word (.docx) Endpoint (With Header Details)
 app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).send('Please upload an Excel file.');
     }
+
+    const testName = req.body.testName || 'ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান';
+    const subject = req.body.subject || 'C-Unit Admission Test';
+    const fullMarks = req.body.fullMarks || '১০০';
+    const duration = req.body.duration || '১ ঘণ্টা';
 
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
@@ -101,17 +152,23 @@ app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) =
     const docParagraphs = [
       new docx.Paragraph({
         children: [
-          new docx.TextRun({ text: "ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান", bold: true, size: 32 })
+          new docx.TextRun({ text: testName, bold: true, size: 32 })
         ],
         alignment: docx.AlignmentType.CENTER
       }),
       new docx.Paragraph({
         children: [
-          new docx.TextRun({ text: "উৎসব / বিষয়: C-Unit Admission Test", color: "64748B", size: 20 })
+          new docx.TextRun({ text: `বিষয়: ${subject}`, color: "475569", size: 22 })
         ],
         alignment: docx.AlignmentType.CENTER
       }),
-      new docx.Paragraph({ text: "" })
+      new docx.Paragraph({
+        children: [
+          new docx.TextRun({ text: `পূর্ণমান: ${fullMarks}                    সময়: ${duration}`, color: "64748B", size: 20 })
+        ],
+        alignment: docx.AlignmentType.CENTER,
+        spacing: { after: 180 }
+      })
     ];
 
     rawData.forEach((q, index) => {
@@ -124,7 +181,6 @@ app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) =
       const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
 
       if (qText) {
-        // Question Title
         docParagraphs.push(
           new docx.Paragraph({
             children: [
@@ -134,7 +190,6 @@ app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) =
           })
         );
 
-        // Options List with Underline/Bold indicator for Correct Answer in Word
         const options = [
           { key: 'A', label: '(A)', val: optA },
           { key: 'B', label: '(B)', val: optB },
@@ -166,7 +221,6 @@ app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) =
           })
         );
 
-        // Explanation
         if (explanation) {
           docParagraphs.push(
             new docx.Paragraph({
@@ -195,7 +249,7 @@ app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) =
   }
 });
 
-// UI Dashboard
+// 4. UI Dashboard
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -215,6 +269,9 @@ app.get('/', (req, res) => {
             <p class="text-xs text-slate-500">Excel to PDF & Word Question Generator</p>
           </div>
         </div>
+        <a href="/api/download-template" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all">
+          <span>📥</span> Download Excel Template
+        </a>
       </header>
 
       <main class="max-w-4xl mx-auto py-10 px-4">
@@ -237,7 +294,32 @@ app.get('/', (req, res) => {
           </button>
         </div>
 
-        <!-- Form Card -->
+        <!-- Header Info Customization Form Card -->
+        <div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm mb-6">
+          <h3 class="text-md font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <span>⚙️</span> প্রশ্নপত্রের হেডার বিবরণি (Header Information)
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">পরীক্ষার নাম (Test Name)</label>
+              <input type="text" form="convertForm" name="testName" value="ঢাবি ভর্তি পরীক্ষা : প্রশ্নপত্র ও সমাধান" class="w-full px-4 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">বিষয় (Subject)</label>
+              <input type="text" form="convertForm" name="subject" value="C-Unit Admission Test" class="w-full px-4 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">পূর্ণমান (Full Marks)</label>
+              <input type="text" form="convertForm" name="fullMarks" value="১০০" class="w-full px-4 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">সময় (Time Duration)</label>
+              <input type="text" form="convertForm" name="duration" value="১ ঘণ্টা" class="w-full px-4 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+          </div>
+        </div>
+
+        <!-- File Upload Form Card -->
         <div class="bg-white rounded-3xl border border-slate-200 p-10 shadow-sm text-center">
           <form id="convertForm" action="/api/convert-excel" method="post" enctype="multipart/form-data">
             <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50/50 hover:bg-indigo-50/30 rounded-2xl p-12 transition-all cursor-pointer flex flex-col items-center justify-center mb-6" onclick="document.getElementById('fileInput').click()">
