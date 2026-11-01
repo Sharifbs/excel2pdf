@@ -46,7 +46,7 @@ app.get('/api/download-template', (req, res) => {
   }
 });
 
-// 2. Excel to PDF Endpoint (With Clean Simple Answer Mark [✓])
+// 2. Excel to PDF Endpoint (With Clean Marked Correct Option)
 app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -109,13 +109,13 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
           { key: 'D', label: '(D)', val: optD }
         ];
 
-        // Format Options Line with [✓] for Correct Answer
+        // Highlight correct option by adding (সঠিক) tag with it
         const optionsStr = options.map(opt => {
           const isCorrect = (opt.key === correctOpt);
-          return isCorrect ? `[✓] ${opt.label} ${opt.val}` : `${opt.label} ${opt.val}`;
+          return isCorrect ? `${opt.label} ${opt.val} (সঠিক)` : `${opt.label} ${opt.val}`;
         }).join('     ');
 
-        doc.font('BanglaFont').fontSize(10).fillColor('#1e293b').text(optionsStr, { indent: 15, lineGap: 4 });
+        doc.font('BanglaFont').fontSize(10).fillColor('#0f172a').text(optionsStr, { indent: 15, lineGap: 4 });
         doc.moveDown(0.4);
 
         if (explanation) {
@@ -199,10 +199,10 @@ app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) =
         const optionTextRuns = [];
         options.forEach((opt, idx) => {
           const isCorrect = (opt.key === correctOpt);
-          const optPrefix = isCorrect ? "[✓] " : "";
+          const markSuffix = isCorrect ? " (সঠিক)" : "";
           optionTextRuns.push(
             new docx.TextRun({
-              text: `${optPrefix}${opt.label} ${opt.val}`,
+              text: `${opt.label} ${opt.val}${markSuffix}`,
               bold: isCorrect,
               underline: isCorrect ? { type: docx.UnderlineType.SINGLE } : undefined,
               size: 20
