@@ -28,7 +28,7 @@ app.get('/api/download-template', (req, res) => {
         option_c: "সোম",
         option_d: "বিভাকর",
         correct_option: "D",
-        Explanation: "বিভাকর অর্থ সূর্য। ইন্দু, কলাভৃৎ, সোম ও কলাধর শব্দগুলো চন্দ্র এর সমার্থক শব্দ।"
+        Explanation: "বিভাকর অর্থ সূর্য। হিন্দু, কলাভৃৎ, সোম ও কলাধর শব্দগুলো চন্দ্র এর সমার্থক শব্দ।"
       }
     ];
 
@@ -46,7 +46,7 @@ app.get('/api/download-template', (req, res) => {
   }
 });
 
-// 2. Excel to PDF Endpoint
+// 2. Excel to PDF Endpoint (With Clean Simple Answer Mark [✓])
 app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -109,12 +109,13 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
           { key: 'D', label: '(D)', val: optD }
         ];
 
+        // Format Options Line with [✓] for Correct Answer
         const optionsStr = options.map(opt => {
           const isCorrect = (opt.key === correctOpt);
-          return isCorrect ? `[ ${opt.label} ${opt.val} ]` : `${opt.label} ${opt.val}`;
+          return isCorrect ? `[✓] ${opt.label} ${opt.val}` : `${opt.label} ${opt.val}`;
         }).join('     ');
 
-        doc.font('BanglaFont').fontSize(10).fillColor('#334155').text(optionsStr, { indent: 15, lineGap: 4 });
+        doc.font('BanglaFont').fontSize(10).fillColor('#1e293b').text(optionsStr, { indent: 15, lineGap: 4 });
         doc.moveDown(0.4);
 
         if (explanation) {
@@ -198,9 +199,10 @@ app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) =
         const optionTextRuns = [];
         options.forEach((opt, idx) => {
           const isCorrect = (opt.key === correctOpt);
+          const optPrefix = isCorrect ? "[✓] " : "";
           optionTextRuns.push(
             new docx.TextRun({
-              text: `${opt.label} ${opt.val}`,
+              text: `${optPrefix}${opt.label} ${opt.val}`,
               bold: isCorrect,
               underline: isCorrect ? { type: docx.UnderlineType.SINGLE } : undefined,
               size: 20
