@@ -28,7 +28,7 @@ app.get('/api/download-template', (req, res) => {
         option_c: "সোম",
         option_d: "বিভাকর",
         correct_option: "D",
-        Explanation: "বিভাকর অর্থ সূর্য। হিন্দু, কলাভৃৎ, সোম ও কলাধর শব্দগুলো চন্দ্র এর সমার্থক শব্দ।"
+        Explanation: "বিভাকর অর্থ সূর্য। ইন্দু, কলাভৃৎ, সোম ও কলাধর শব্দগুলো চন্দ্র এর সমার্থক শব্দ।"
       }
     ];
 
@@ -46,7 +46,18 @@ app.get('/api/download-template', (req, res) => {
   }
 });
 
-// 2. Excel to PDF Endpoint (With Clean Marked Correct Option)
+// Helper function to extract normalized correct option key (A, B, C, or D)
+function getCorrectKey(val) {
+  if (!val) return '';
+  const str = String(val).trim().toUpperCase();
+  if (str.includes('A')) return 'A';
+  if (str.includes('B')) return 'B';
+  if (str.includes('C')) return 'C';
+  if (str.includes('D')) return 'D';
+  return str;
+}
+
+// 2. Excel to PDF Endpoint (Guaranteed Correct Answer Marking)
 app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -95,7 +106,8 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
       const optC = q.option_c || q['Option C'] || q.c || '';
       const optD = q.option_d || q['Option D'] || q.d || '';
       
-      const correctOpt = String(q.correct_option || q.Answer || q.correct || '').trim().toUpperCase();
+      const rawCorrect = q.correct_option || q.Answer || q.correct || q.correct_ans || '';
+      const correctOpt = getCorrectKey(rawCorrect);
       const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
 
       if (qText) {
@@ -109,7 +121,7 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
           { key: 'D', label: '(D)', val: optD }
         ];
 
-        // Highlight correct option by adding (সঠিক) tag with it
+        // Highlight correct answer by appending "(সঠিক)" right next to it
         const optionsStr = options.map(opt => {
           const isCorrect = (opt.key === correctOpt);
           return isCorrect ? `${opt.label} ${opt.val} (সঠিক)` : `${opt.label} ${opt.val}`;
@@ -176,7 +188,9 @@ app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) =
       const optB = q.option_b || q['Option B'] || q.b || '';
       const optC = q.option_c || q['Option C'] || q.c || '';
       const optD = q.option_d || q['Option D'] || q.d || '';
-      const correctOpt = String(q.correct_option || q.Answer || q.correct || '').trim().toUpperCase();
+      
+      const rawCorrect = q.correct_option || q.Answer || q.correct || q.correct_ans || '';
+      const correctOpt = getCorrectKey(rawCorrect);
       const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
 
       if (qText) {
