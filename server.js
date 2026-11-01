@@ -28,7 +28,7 @@ app.get('/api/download-template', (req, res) => {
         option_c: "সোম",
         option_d: "বিভাকর",
         correct_option: "D",
-        Explanation: "বিভাকর অর্থ সূর্য। হিন্দু, কলাভৃৎ, সোম ও কলাধর শব্দগুলো চন্দ্র এর সমার্থক শব্দ।"
+        Explanation: "বিভাকর অর্থ সূর্য। ইন্দু, কলাভৃৎ, সোম ও কলাধর শব্দগুলো চন্দ্র এর সমার্থক শব্দ।"
       }
     ];
 
@@ -46,7 +46,7 @@ app.get('/api/download-template', (req, res) => {
   }
 });
 
-// 2. Excel to PDF Endpoint (With Header Details: Test Name, Subject, Marks & Duration)
+// 2. Excel to PDF Endpoint
 app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -63,7 +63,6 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
     const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="question-paper.pdf"');
 
     const doc = new PDFDocument({ margin: 40, size: 'A4' });
     doc.pipe(res);
@@ -100,7 +99,6 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
       const explanation = (q['Explanation '] || q.Explanation || q.explanation || '').trim();
 
       if (qText) {
-        // Question Text
         doc.font('BanglaFont').fontSize(11).fillColor('#0f172a').text(`প্রশ্ন ${index + 1}. ${qText}`, { lineGap: 4 });
         doc.moveDown(0.3);
 
@@ -133,7 +131,7 @@ app.post('/api/convert-excel', upload.single('file'), (req, res) => {
   }
 });
 
-// 3. Excel to Word (.docx) Endpoint (With Header Details)
+// 3. Excel to Word (.docx) Endpoint
 app.post('/api/convert-excel-to-word', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -260,7 +258,7 @@ app.get('/', (req, res) => {
       <title>DocTransform Studio</title>
       <script src="https://cdn.tailwindcss.com"></script>
     </head>
-    <body class="bg-slate-100 text-slate-800 min-h-screen font-sans">
+    <body class="bg-slate-100 text-slate-800 min-h-screen font-sans pb-16">
       <header class="bg-white border-b border-slate-200 py-4 px-8 flex justify-between items-center shadow-sm">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-md">📄</div>
@@ -320,8 +318,8 @@ app.get('/', (req, res) => {
         </div>
 
         <!-- File Upload Form Card -->
-        <div class="bg-white rounded-3xl border border-slate-200 p-10 shadow-sm text-center">
-          <form id="convertForm" action="/api/convert-excel" method="post" enctype="multipart/form-data">
+        <div class="bg-white rounded-3xl border border-slate-200 p-10 shadow-sm text-center mb-8">
+          <form id="convertForm" onsubmit="handleFormSubmit(event)" enctype="multipart/form-data">
             <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50/50 hover:bg-indigo-50/30 rounded-2xl p-12 transition-all cursor-pointer flex flex-col items-center justify-center mb-6" onclick="document.getElementById('fileInput').click()">
               <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-4 text-3xl">📥</div>
               <h3 id="dragText" class="text-lg font-bold text-slate-700 mb-1">Excel প্রশ্ন ফাইল আপলোড করুন</h3>
@@ -333,16 +331,33 @@ app.get('/', (req, res) => {
             <div id="fileInfo" class="hidden mb-6 p-4 bg-slate-100 rounded-xl flex items-center justify-between">
               <span id="selectedFileName" class="text-sm font-medium text-slate-700"></span>
               <button type="submit" id="submitBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-2 rounded-lg text-sm shadow-sm transition-all">
-                Download PDF Now
+                Generate & Preview
               </button>
             </div>
           </form>
         </div>
+
+        <!-- Live PDF Show Section -->
+        <div id="pdfShowSection" class="hidden bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <span>👁️</span> PDF Live Preview & Download
+            </h3>
+            <a id="downloadBtn" href="#" download="question-paper.pdf" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-1.5">
+              <span>⬇️</span> Download File
+            </a>
+          </div>
+          <div class="w-full h-[650px] rounded-2xl overflow-hidden border border-slate-200 bg-slate-50">
+            <iframe id="pdfFrame" class="w-full h-full border-none"></iframe>
+          </div>
+        </div>
       </main>
 
       <script>
+        let currentMode = 'excel';
+
         function switchMode(mode) {
-          const form = document.getElementById('convertForm');
+          currentMode = mode;
           const fileInput = document.getElementById('fileInput');
           const excelTab = document.getElementById('excelTab');
           const wordTab = document.getElementById('wordTab');
@@ -350,26 +365,26 @@ app.get('/', (req, res) => {
           const subText = document.getElementById('subText');
           const fileInfo = document.getElementById('fileInfo');
           const submitBtn = document.getElementById('submitBtn');
+          const pdfShowSection = document.getElementById('pdfShowSection');
           
           fileInput.value = '';
           fileInfo.classList.add('hidden');
+          pdfShowSection.classList.add('hidden');
 
           if (mode === 'excel') {
-            form.action = '/api/convert-excel';
             fileInput.accept = '.xlsx, .xls';
             excelTab.className = 'bg-white p-6 rounded-2xl border-2 border-indigo-600 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-4 cursor-pointer';
             wordTab.className = 'bg-white p-6 rounded-2xl border border-slate-200 opacity-60 hover:opacity-100 transition-all text-left flex items-start gap-4 cursor-pointer';
             dragText.textContent = 'Excel প্রশ্ন ফাইল আপলোড করুন';
             subText.textContent = 'ফাইল সিলেক্ট করে সুন্দর Question Paper PDF বানিয়ে নিন';
-            submitBtn.textContent = 'Download PDF Now';
+            submitBtn.textContent = 'Generate & Preview PDF';
           } else {
-            form.action = '/api/convert-excel-to-word';
             fileInput.accept = '.xlsx, .xls';
             wordTab.className = 'bg-white p-6 rounded-2xl border-2 border-indigo-600 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-4 cursor-pointer';
             excelTab.className = 'bg-white p-6 rounded-2xl border border-slate-200 opacity-60 hover:opacity-100 transition-all text-left flex items-start gap-4 cursor-pointer';
             dragText.textContent = 'Excel প্রশ্ন ফাইল আপলোড করুন';
             subText.textContent = 'ফাইল সিলেক্ট করে Word Document (.docx) বানিয়ে নিন';
-            submitBtn.textContent = 'Download Word (.docx) Now';
+            submitBtn.textContent = 'Generate & Download Word';
           }
         }
 
@@ -377,6 +392,56 @@ app.get('/', (req, res) => {
           if (input.files && input.files[0]) {
             document.getElementById('selectedFileName').textContent = input.files[0].name;
             document.getElementById('fileInfo').classList.remove('hidden');
+          }
+        }
+
+        async function handleFormSubmit(event) {
+          event.preventDefault();
+          const form = document.getElementById('convertForm');
+          const formData = new FormData(form);
+          const endpoint = currentMode === 'excel' ? '/api/convert-excel' : '/api/convert-excel-to-word';
+          const submitBtn = document.getElementById('submitBtn');
+
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Processing...';
+
+          try {
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              body: formData
+            });
+
+            if (!response.ok) throw new Error('Conversion failed');
+
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            
+            const pdfShowSection = document.getElementById('pdfShowSection');
+            const pdfFrame = document.getElementById('pdfFrame');
+            const downloadBtn = document.getElementById('downloadBtn');
+
+            if (currentMode === 'excel') {
+              pdfFrame.src = blobUrl;
+              downloadBtn.href = blobUrl;
+              downloadBtn.download = 'question-paper.pdf';
+              downloadBtn.textContent = '⬇️ Download PDF File';
+              pdfShowSection.classList.remove('hidden');
+              pdfShowSection.scrollIntoView({ behavior: 'smooth' });
+            } else {
+              downloadBtn.href = blobUrl;
+              downloadBtn.download = 'question-paper.docx';
+              downloadBtn.textContent = '⬇️ Download Word File';
+              pdfShowSection.classList.add('hidden');
+              const a = document.createElement('a');
+              a.href = blobUrl;
+              a.download = 'question-paper.docx';
+              a.click();
+            }
+          } catch (err) {
+            alert('Error generating document: ' + err.message);
+          } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = currentMode === 'excel' ? 'Generate & Preview PDF' : 'Generate & Download Word';
           }
         }
       </script>
